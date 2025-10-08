@@ -3,27 +3,33 @@ package com.dp.vstore_orderservice.services;
 import com.dp.vstore_orderservice.dtos.OrderDto;
 import com.dp.vstore_orderservice.dtos.OrderItemDto;
 import com.dp.vstore_orderservice.exceptions.OrderCannotBePlacedException;
+import com.dp.vstore_orderservice.models.Item;
 import com.dp.vstore_orderservice.models.Order;
 import com.dp.vstore_orderservice.models.Payment;
+import com.dp.vstore_orderservice.repositories.ItemRepository;
 import com.dp.vstore_orderservice.repositories.OrderRepository;
 import com.dp.vstore_orderservice.repositories.PaymentRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @Service
 public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final CartClient cartClient;
     private final PaymentRepository paymentRepository;
+    private final ItemRepository itemRepository;
 
-    public OrderServiceImpl(OrderRepository orderRepository, CartClient cartClient, PaymentRepository paymentRepository) {
+    public OrderServiceImpl(OrderRepository orderRepository, CartClient cartClient,
+                            PaymentRepository paymentRepository,
+                            ItemRepository itemRepository) {
         this.orderRepository = orderRepository;
         this.cartClient = cartClient;
         this.paymentRepository = paymentRepository;
+        this.itemRepository = itemRepository;
     }
+
 
     @Override
     public OrderDto createOrder(Long userId) throws Exception {
@@ -31,55 +37,82 @@ public class OrderServiceImpl implements OrderService {
         if (cart.getItems() == null || cart.getItems().isEmpty()) {
             throw new OrderCannotBePlacedException("Your cart is empty, please select an item.");
         }
-        Order order = new Order();
-        order.setUserId(userId);
-        order.setCartId(cart.getCartId());
-        order.setOrderStatus(Order.OrderStatus.PENDING);
-        order.setItems(new ArrayList<>());
-        setOrderItems(cart.getItems(), order);
+        List<Order> orders = orderRepository.findAllByUserIdAndDeletedFalse(userId);
 
-        Payment payment = new Payment();
-        payment.setOrderId(order.getId());
-        payment.setAmount(calculatePrice(cart.getItems()));
-        payment.setPaymentStatus(Payment.PaymentStatus.PENDING);
+        if (!orders.isEmpty() && orders.getLast().getOrderStatus() == Order.OrderStatus.PENDING) {
+            orders.getLast().getItems().clear();
+            setOrderItems(cart.getItems(), orders.getLast());
+            orderRepository.save(orders.getLast());
+            Payment payment = setPayment(cart.getItems(), orders.getLast().getPayments().getLast());
+            return OrderDto.from(orders.getLast(), payment);
+        }
 
-        order.setPayments(new ArrayList<>());
-        order.getPayments().add(payment);
-
-        orderRepository.save(order);
+        Order order = setOrder(userId, cart);
+        Payment payment = setPayment(cart.getItems(), order);
 
         return OrderDto.from(order, payment);
     }
 
     @Override
     public List<OrderDto> getOrders(Long userId) {
-        List<Order> orders = orderRepository.findByUserIdAndDeletedFalse(userId);
+        List<Order> orders = orderRepository.findAllByUserIdAndDeletedFalse(userId);
         return orders.stream().map(order -> {
-            List<Payment> payments = paymentRepository.findByOrderId(order.getId());
+            List<Payment> payments = paymentRepository.findByOrderIdAndDeletedFalse(order.getId());
             return OrderDto.from(order, payments.getLast());
         }).toList();
     }
 
-    private double calculatePrice(Map<OrderItemDto.ItemsDto, Integer> items) {
-        double price = 0.0;
-        for(Map.Entry<OrderItemDto.ItemsDto, Integer> entry : items.entrySet()) {
-            OrderItemDto.ItemsDto item = entry.getKey();
-            Integer quantity = entry.getValue();
-
-            price += item.getProductPrice()*quantity;
-        }
-        return price;
+    private Order setOrder(Long userId, OrderItemDto cart) {
+        Order order = new Order();
+        order.setUserId(userId);
+        order.setCartId(cart.getCartId());
+        order.setOrderStatus(Order.OrderStatus.PENDING);
+        order.setItems(new ArrayList<>());
+        setOrderItems(cart.getItems(), order);
+        orderRepository.save(order);
+        return order;
     }
 
-    private void setOrderItems(Map<OrderItemDto.ItemsDto, Integer> items, Order order) {
-        for(Map.Entry<OrderItemDto.ItemsDto, Integer> entry : items.entrySet()) {
-            OrderItemDto.ItemsDto item = entry.getKey();
-            Integer quantity = entry.getValue();
-            Order.Items itemEntity = new Order.Items();
-            itemEntity.setProductId(item.getProductId());
-            itemEntity.setQuantity(quantity);
+    private Payment setPayment(List<OrderItemDto.ProductDto> items, Order order) {
+        Payment payment = new Payment();
+        payment.setOrderId(order.getId());
+        payment.setAmount(calculatePrice(items));
+        payment.setPaymentStatus(Payment.PaymentStatus.PENDING);
+        paymentRepository.save(payment);
 
-            order.getItems().add(itemEntity);
+        order.setPayments(new ArrayList<>());
+        order.getPayments().add(payment);
+        orderRepository.save(order);
+        return payment;
+    }
+
+    private Payment setPayment(List<OrderItemDto.ProductDto> items, Payment payment) {
+        double amount = calculatePrice(items);
+        payment.setAmount(amount);
+        payment.setPaymentStatus(Payment.PaymentStatus.PENDING);
+        paymentRepository.save(payment);
+        return payment;
+    }
+
+    private double calculatePrice(List<OrderItemDto.ProductDto> items) {
+        double price = 0.0;
+        for(OrderItemDto.ProductDto dto : items) {
+            price += dto.getProduct().getProductPrice() * dto.getQuantity();
+        }
+        return Math.round(price * 100.0) / 100.0;
+    }
+
+    private void setOrderItems(List<OrderItemDto.ProductDto> items, Order order) {
+        for(OrderItemDto.ProductDto dto : items) {
+
+            Item item = new Item();
+            item.setProductId(dto.getProduct().getProductId());
+            item.setQuantity(dto.getQuantity());
+            item.setPrice(dto.getProduct().getProductPrice());
+            itemRepository.save(item);
+
+            order.getItems().add(item);
+            orderRepository.save(order);
         }
     }
 }

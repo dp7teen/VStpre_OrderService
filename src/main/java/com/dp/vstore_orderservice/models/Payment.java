@@ -9,7 +9,7 @@ import lombok.Setter;
 
 import java.util.UUID;
 
-@Entity
+@Entity(name = "payments")
 @Getter @Setter
 public class Payment extends BaseModel {
     private Long orderId;

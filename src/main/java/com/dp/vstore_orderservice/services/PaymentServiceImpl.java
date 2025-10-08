@@ -16,17 +16,23 @@ import java.util.Optional;
 public class PaymentServiceImpl implements PaymentService {
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
+    private final ProductClient productClient;
 
-    public PaymentServiceImpl(PaymentRepository paymentRepository,  OrderRepository orderRepository) {
+    public PaymentServiceImpl(PaymentRepository paymentRepository,  OrderRepository orderRepository,
+                              ProductClient productClient) {
+        this.productClient = productClient;
         this.paymentRepository = paymentRepository;
         this.orderRepository = orderRepository;
     }
 
     @Override
-    public OrderDto pay(Long orderId, Double amount) throws OrderNotPresentException, IncorrectAmountException {
+    public OrderDto pay(Long orderId, double amount) throws Exception {
         Optional<Order> optionalOrder = orderRepository.findByIdAndDeletedFalse(orderId);
         if (optionalOrder.isEmpty()) {
-            throw new OrderNotPresentException(String.format("The optionalOrder with id : %s is not found.", orderId));
+            throw new OrderNotPresentException(String.format("The Order with id : %s is not found.", orderId));
+        }
+        if (optionalOrder.get().getOrderStatus() != Order.OrderStatus.PENDING) {
+            throw new IncorrectAmountException(String.format("The Order with id : %s is already paid.", orderId));
         }
         Order order = optionalOrder.get();
         if (amount != 0 && amount < order.getPayments().getLast().getAmount()) {
@@ -35,8 +41,9 @@ public class PaymentServiceImpl implements PaymentService {
         else if (amount != 0 &&  amount > order.getPayments().getLast().getAmount()) {
             throw new IncorrectAmountException(String.format("The amount : %s is not correct.", amount));
         }
-        else if (amount.equals(order.getPayments().getLast().getAmount())) {
+        else if (amount == (order.getPayments().getLast().getAmount())) {
             makePayment(order);
+            updateStock(order);
         }
         else {
             throw new IncorrectAmountException(String.format("The amount : %s is not correct.", amount));
@@ -45,9 +52,22 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private void makePayment(Order order) {
-        List<Payment> payments = paymentRepository.findByOrderId(order.getId());
+        List<Payment> payments = paymentRepository.findByOrderIdAndDeletedFalse(order.getId());
         Payment payment = payments.getLast();
         payment.setPaymentStatus(Payment.PaymentStatus.PAID);
         paymentRepository.save(payment);
+
+        order.setOrderStatus(Order.OrderStatus.CONFIRMED);
+        orderRepository.save(order);
+    }
+
+    private void updateStock(Order order){
+        order.getItems().forEach(item -> {
+            try {
+                productClient.updateStock(item.getProductId(), item.getQuantity());
+            } catch (Exception e) {
+                throw new RuntimeException(e.getMessage());
+            }
+        });
     }
 }

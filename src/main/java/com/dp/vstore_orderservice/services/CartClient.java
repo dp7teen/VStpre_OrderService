@@ -1,6 +1,10 @@
 package com.dp.vstore_orderservice.services;
 
 import com.dp.vstore_orderservice.dtos.OrderItemDto;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -13,9 +17,16 @@ public class CartClient {
         this.restTemplate = restTemplate;
     }
 
-    public OrderItemDto getCart(Long userId) throws  Exception {
-        String url = "http://localhost:9092/cart/" + userId;
+    private HttpHeaders getHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        String token = (String) SecurityContextHolder.getContext().getAuthentication().getCredentials();
+        headers.set("Authorization", token);
+        return headers;
+    }
 
-        return restTemplate.getForObject(url, OrderItemDto.class);
+    public OrderItemDto getCart(Long userId) throws  Exception {
+        String url = "http://localhost:8999/api/cart?userid=" + userId;
+        HttpEntity<?> entity = new HttpEntity<>(getHeaders());
+        return restTemplate.exchange(url, HttpMethod.GET, entity, OrderItemDto.class).getBody();
     }
 }

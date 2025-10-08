@@ -1,10 +1,11 @@
 package com.dp.vstore_orderservice.services;
 
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
-
-import java.util.HashMap;
-import java.util.Map;
 
 @Service
 public class ProductClient {
@@ -14,9 +15,16 @@ public class ProductClient {
         this.restTemplate = restTemplate;
     }
 
-    public void updateStock(Long productId, int quantityToDeduct) {
-        String url = String.format("http://localhost:9091/products/update/%s/%s", productId, quantityToDeduct);
+    private HttpHeaders getHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        String token = (String) SecurityContextHolder.getContext().getAuthentication().getCredentials();
+        headers.set("Authorization", token);
+        return headers;
+    }
 
-        restTemplate.patchForObject(url, String.class, null);
+    public void updateStock(Long productId, int quantityToDeduct) throws Exception {
+        String url = String.format("http://localhost:8999/api/products/update/%s/%s", productId, quantityToDeduct);
+        HttpEntity<?> entity = new HttpEntity<>(getHeaders());
+        restTemplate.exchange(url, HttpMethod.PUT ,entity, Boolean.class);
     }
 }

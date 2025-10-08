@@ -9,5 +9,5 @@ import java.util.UUID;
 
 @Service
 public interface PaymentService {
-    OrderDto pay(Long orderId, Double amount) throws OrderNotPresentException, IncorrectAmountException;
+    OrderDto pay(Long orderId, double amount) throws Exception;
 }

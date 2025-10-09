@@ -25,7 +25,7 @@ public class CartClient {
     }
 
     public OrderItemDto getCart(Long userId) throws  Exception {
-        String url = "http://localhost:8999/api/cart?userid=" + userId;
+        String url = "http://cart-service:9092/api/cart?userid=" + userId;
         HttpEntity<?> entity = new HttpEntity<>(getHeaders());
         return restTemplate.exchange(url, HttpMethod.GET, entity, OrderItemDto.class).getBody();
     }

@@ -23,7 +23,8 @@ public class ProductClient {
     }
 
     public void updateStock(Long productId, int quantityToDeduct) throws Exception {
-        String url = String.format("http://localhost:8999/api/products/update/%s/%s", productId, quantityToDeduct);
+        String url = String.format("http://product-service:9091/api/products/update/%s/%s", productId,
+                quantityToDeduct);
         HttpEntity<?> entity = new HttpEntity<>(getHeaders());
         restTemplate.exchange(url, HttpMethod.PUT ,entity, Boolean.class);
     }
